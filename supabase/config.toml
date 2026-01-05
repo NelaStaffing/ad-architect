@@ -1,0 +1,4 @@
+project_id = "fxtnhiefsxvnqzereqxr"
+
+[functions.generate-layouts]
+verify_jwt = true
