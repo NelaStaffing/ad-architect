@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -13,7 +14,8 @@ interface AssetMeta {
   height?: number;
 }
 
-interface LayoutRequest {
+interface GenerateRequest {
+  adId: string;
   sizeSpec: { width: number; height: number };
   dpi: number;
   bleedPx: number;
@@ -24,99 +26,67 @@ interface LayoutRequest {
   assets: AssetMeta[];
 }
 
-const LAYOUT_SYSTEM_PROMPT = `You are a professional print ad layout designer. Generate print-ready classified ad layouts in strict JSON format.
-
-For each layout, you must create a complete, production-ready design that:
-1. Respects bleed and safe zones
-2. Uses appropriate font sizes (never below minimum)
-3. Places all text content legibly
-4. Integrates provided assets effectively
-5. Creates visual hierarchy appropriate to the brief
-
-Return ONLY a valid JSON array of 3-6 layout objects. Each object must follow this exact schema:
-
-{
-  "document": {
-    "widthPx": number,
-    "heightPx": number,
-    "dpi": number,
-    "bleedPx": number,
-    "safePx": number
-  },
-  "elements": [
-    {
-      "type": "text" | "image" | "shape",
-      "id": string (unique),
-      "x": number (pixels from left),
-      "y": number (pixels from top),
-      "w": number (width in pixels),
-      "h": number (height in pixels),
-      "style": {
-        "fontFamily": string (e.g., "Arial", "Georgia"),
-        "fontSize": number (in points),
-        "fontWeight": "normal" | "bold",
-        "lineHeight": number (multiplier like 1.2),
-        "color": string (hex color),
-        "alignment": "left" | "center" | "right",
-        "padding": number,
-        "backgroundColor": string (hex color, optional),
-        "borderRadius": number (optional)
-      },
-      "content": string (for text type),
-      "assetRef": string (asset id for image type)
-    }
-  ],
-  "metadata": {
-    "templateName": string (descriptive name),
-    "rationale": string (design reasoning),
-    "warnings": string[] (any issues like tight spacing)
-  }
-}
-
-Design variation strategies to use:
-- Centered vs left-aligned layouts
-- Image-dominant vs text-dominant
-- Stacked vertical vs side-by-side horizontal
-- Bold headline focused vs balanced
-- Minimal whitespace vs generous padding
-
-Always position elements within the safe zone (inset by safePx from edges).
-Never use font sizes below the minFontSize specified.`;
-
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { sizeSpec, dpi, bleedPx, safePx, minFontSize, copy, brief, assets }: LayoutRequest = await req.json();
+    const { adId, sizeSpec, dpi, bleedPx, safePx, minFontSize, copy, brief, assets }: GenerateRequest = await req.json();
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    const userPrompt = `Generate 3-6 different layout variations for this classified ad:
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-**Document Specs:**
-- Size: ${sizeSpec.width}x${sizeSpec.height} pixels
-- DPI: ${dpi}
-- Bleed: ${bleedPx}px
-- Safe zone: ${safePx}px inset from edges
-- Minimum font size: ${minFontSize}pt
+    // Build the image generation prompt
+    const aspectRatio = sizeSpec.width > sizeSpec.height ? "landscape" : 
+                        sizeSpec.width < sizeSpec.height ? "portrait" : "square";
+    
+    // Get asset URLs for the prompt
+    const productAssets = assets.filter(a => a.type === 'product');
+    const logoAssets = assets.filter(a => a.type === 'logo');
+
+    const imagePrompt = `Create a professional print classified advertisement with these specifications:
+
+**Ad Size:** ${sizeSpec.width}x${sizeSpec.height} pixels (${aspectRatio} orientation)
+**Print specs:** ${dpi} DPI, ${bleedPx}px bleed, ${safePx}px safe margin
 
 **Creative Brief:**
-${brief || "Standard classified ad layout"}
+${brief || "Professional classified ad layout"}
 
-**Ad Copy:**
-${copy || "Sample headline and body text"}
+**Ad Copy (must appear legibly in the ad):**
+${copy || "Contact us for more information"}
 
-**Available Assets:**
-${assets.length > 0 ? assets.map(a => `- ${a.type}: ${a.id} (${a.width || 'unknown'}x${a.height || 'unknown'})`).join('\n') : 'No images provided'}
+**Design Requirements:**
+- Clean, professional classified ad style suitable for newspaper/magazine print
+- Text must be large and highly readable (minimum ${minFontSize}pt equivalent)
+- Keep important content within safe margins
+- High contrast for print reproduction
+- Include clear visual hierarchy: headline, body text, contact info
+${productAssets.length > 0 ? `- Feature the product prominently` : ''}
+${logoAssets.length > 0 ? `- Include logo placement` : ''}
 
-Generate diverse layouts with different hierarchy approaches. Return ONLY valid JSON array.`;
+Generate a complete, print-ready classified advertisement image.`;
 
-    console.log("Generating layouts for:", { sizeSpec, dpi, brief: brief?.substring(0, 50) });
+    console.log("Generating ad image for:", { adId, sizeSpec, brief: brief?.substring(0, 50) });
+
+    // Build message content - include asset images if available
+    const messageContent: any[] = [{ type: "text", text: imagePrompt }];
+    
+    // Add product and logo images to the prompt for better context
+    for (const asset of assets.slice(0, 2)) { // Limit to 2 images
+      if (asset.url) {
+        messageContent.push({
+          type: "image_url",
+          image_url: { url: asset.url }
+        });
+      }
+    }
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -125,12 +95,14 @@ Generate diverse layouts with different hierarchy approaches. Return ONLY valid 
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-2.5-flash-image-preview",
         messages: [
-          { role: "system", content: LAYOUT_SYSTEM_PROMPT },
-          { role: "user", content: userPrompt },
+          { 
+            role: "user", 
+            content: messageContent
+          }
         ],
-        temperature: 0.8,
+        modalities: ["image", "text"],
       }),
     });
 
@@ -156,30 +128,79 @@ Generate diverse layouts with different hierarchy approaches. Return ONLY valid 
     }
 
     const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
+    console.log("AI response received");
 
-    if (!content) {
-      throw new Error("No content in AI response");
+    // Extract the generated image
+    const message = data.choices?.[0]?.message;
+    const generatedImage = message?.images?.[0]?.image_url?.url;
+    const aiDescription = message?.content || "";
+
+    if (!generatedImage) {
+      console.error("No image in response:", JSON.stringify(data));
+      throw new Error("No image generated by AI");
     }
 
-    // Extract JSON from the response (handle markdown code blocks)
-    let jsonStr = content;
-    const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (jsonMatch) {
-      jsonStr = jsonMatch[1];
-    }
-
-    // Parse and validate
-    const layouts = JSON.parse(jsonStr.trim());
+    // Convert base64 to blob and upload to storage
+    const base64Data = generatedImage.replace(/^data:image\/\w+;base64,/, '');
+    const imageBytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
     
-    if (!Array.isArray(layouts) || layouts.length === 0) {
-      throw new Error("Invalid layouts array");
+    const fileName = `generated/${adId}/${Date.now()}.png`;
+    const { error: uploadError } = await supabase.storage
+      .from('ad-assets')
+      .upload(fileName, imageBytes, {
+        contentType: 'image/png',
+        upsert: true
+      });
+
+    if (uploadError) {
+      console.error("Storage upload error:", uploadError);
+      throw new Error("Failed to save generated image");
     }
 
-    console.log(`Generated ${layouts.length} layout variations`);
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from('ad-assets')
+      .getPublicUrl(fileName);
+
+    const imageUrl = urlData.publicUrl;
+    console.log("Image uploaded:", imageUrl);
+
+    // Create a version entry with the generated image
+    const { error: versionError } = await supabase
+      .from('versions')
+      .insert({
+        ad_id: adId,
+        source: 'ai',
+        layout_json: {
+          document: { widthPx: sizeSpec.width, heightPx: sizeSpec.height, dpi, bleedPx, safePx },
+          elements: [],
+          metadata: { 
+            templateName: "AI Generated Ad",
+            rationale: aiDescription,
+            warnings: []
+          }
+        },
+        preview_url: imageUrl,
+        is_selected: true
+      });
+
+    if (versionError) {
+      console.error("Version insert error:", versionError);
+    }
+
+    // Deselect other versions
+    await supabase
+      .from('versions')
+      .update({ is_selected: false })
+      .eq('ad_id', adId)
+      .neq('preview_url', imageUrl);
 
     return new Response(
-      JSON.stringify({ layouts }),
+      JSON.stringify({ 
+        success: true,
+        imageUrl,
+        description: aiDescription
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {

@@ -1,12 +1,12 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { StatusBadge } from '@/components/ads/StatusBadge';
-import { LayoutCanvas } from '@/components/editor/LayoutCanvas';
-import { VersionsPanel } from '@/components/editor/VersionsPanel';
-import { PropertiesPanel } from '@/components/editor/PropertiesPanel';
+import { GeneratedAdViewer } from '@/components/editor/GeneratedAdViewer';
+import { AdPreview } from '@/components/editor/AdPreview';
+import { AdInfoPanel } from '@/components/editor/AdInfoPanel';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -15,14 +15,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Ad, Asset, Version, Publication, LayoutJSON, SizePreset, LayoutElement } from '@/types/ad';
+import { Ad, Asset, Version, Publication, LayoutJSON, SizePreset } from '@/types/ad';
 import { toast } from 'sonner';
 import {
   Loader2,
-  Sparkles,
-  Save,
-  Download,
-  ChevronLeft,
   Eye,
   EyeOff,
   ArrowLeft,
@@ -39,13 +35,10 @@ export default function AdEditor() {
   const [publication, setPublication] = useState<Publication | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [showBleed, setShowBleed] = useState(true);
   const [showSafe, setShowSafe] = useState(true);
 
-  const [currentLayout, setCurrentLayout] = useState<LayoutJSON | null>(null);
-  const [selectedElement, setSelectedElement] = useState<string | null>(null);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [selectedVersion, setSelectedVersion] = useState<Version | null>(null);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -110,9 +103,7 @@ export default function AdEditor() {
 
       // Load selected version or most recent
       const selected = typedVersions.find(v => v.is_selected) || typedVersions[0];
-      if (selected) {
-        setCurrentLayout(selected.layout_json);
-      }
+      setSelectedVersion(selected || null);
     } catch (error) {
       console.error('Error fetching ad:', error);
       toast.error('Failed to load ad');
@@ -122,13 +113,14 @@ export default function AdEditor() {
     }
   };
 
-  const generateLayouts = async () => {
+  const generateAd = async () => {
     if (!ad) return;
 
     setGenerating(true);
     try {
       const { data, error } = await supabase.functions.invoke('generate-layouts', {
         body: {
+          adId: ad.id,
           sizeSpec: ad.size_spec,
           dpi: ad.dpi,
           bleedPx: publication?.bleed_px || 0,
@@ -153,24 +145,11 @@ export default function AdEditor() {
         return;
       }
 
-      const layouts: LayoutJSON[] = data.layouts;
-      
-      // Save all generated layouts as versions
-      for (const layout of layouts) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await supabase.from('versions').insert({
-          ad_id: ad.id,
-          source: 'ai',
-          layout_json: layout as any,
-          is_selected: false,
-        });
-      }
-
-      toast.success(`Generated ${layouts.length} layout variations!`);
+      toast.success('Ad generated successfully!');
       fetchAdData();
     } catch (error) {
-      console.error('Error generating layouts:', error);
-      toast.error('Failed to generate layouts');
+      console.error('Error generating ad:', error);
+      toast.error('Failed to generate ad');
     } finally {
       setGenerating(false);
     }
@@ -188,48 +167,10 @@ export default function AdEditor() {
       .update({ is_selected: true })
       .eq('id', version.id);
 
-    setCurrentLayout(version.layout_json);
+    setSelectedVersion(version);
     setVersions(prev =>
       prev.map(v => ({ ...v, is_selected: v.id === version.id }))
     );
-    setHasUnsavedChanges(false);
-    setSelectedElement(null);
-  };
-
-  const handleLayoutChange = useCallback((updatedLayout: LayoutJSON) => {
-    setCurrentLayout(updatedLayout);
-    setHasUnsavedChanges(true);
-  }, []);
-
-  const saveLayout = async () => {
-    if (!currentLayout || !ad) return;
-
-    setSaving(true);
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await supabase.from('versions').insert({
-        ad_id: ad.id,
-        source: 'manual',
-        layout_json: currentLayout as any,
-        is_selected: true,
-      });
-
-      // Deselect others
-      await supabase
-        .from('versions')
-        .update({ is_selected: false })
-        .eq('ad_id', ad.id)
-        .neq('source', 'manual');
-
-      setHasUnsavedChanges(false);
-      toast.success('Layout saved!');
-      fetchAdData();
-    } catch (error) {
-      console.error('Error saving layout:', error);
-      toast.error('Failed to save layout');
-    } finally {
-      setSaving(false);
-    }
   };
 
   const updateStatus = async (status: string) => {
@@ -247,11 +188,6 @@ export default function AdEditor() {
       console.error('Error updating status:', error);
       toast.error('Failed to update status');
     }
-  };
-
-  const exportAd = async (format: 'png' | 'pdf') => {
-    toast.info(`Export to ${format.toUpperCase()} coming soon!`);
-    // TODO: Implement canvas export
   };
 
   if (authLoading || loading) {
@@ -325,78 +261,35 @@ export default function AdEditor() {
                 <SelectItem value="exported">Exported</SelectItem>
               </SelectContent>
             </Select>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={saveLayout}
-              disabled={!hasUnsavedChanges || saving}
-            >
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              <span className="ml-1 hidden sm:inline">Save</span>
-            </Button>
-
-            <Button variant="outline" size="sm" onClick={() => exportAd('png')}>
-              <Download className="w-4 h-4" />
-              <span className="ml-1 hidden sm:inline">Export</span>
-            </Button>
           </div>
         </div>
 
         {/* Main editor area */}
-        <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 flex overflow-hidden relative">
           {/* Versions panel */}
-          <VersionsPanel
+          <GeneratedAdViewer
             versions={versions}
-            currentLayout={currentLayout}
             generating={generating}
-            onGenerate={generateLayouts}
+            onGenerate={generateAd}
             onSelectVersion={selectVersion}
+            selectedVersion={selectedVersion}
           />
 
-          {/* Canvas */}
-          <div className="flex-1 overflow-auto bg-muted/30 canvas-grid p-8 flex items-center justify-center">
-            {currentLayout ? (
-              <LayoutCanvas
-                layout={currentLayout}
-                assets={assets}
-                showBleed={showBleed}
-                showSafe={showSafe}
-                selectedElement={selectedElement}
-                onSelectElement={setSelectedElement}
-                onLayoutChange={handleLayoutChange}
-              />
-            ) : (
-              <div className="text-center">
-                <div className="w-20 h-20 rounded-2xl bg-muted/50 flex items-center justify-center mx-auto mb-4">
-                  <Sparkles className="w-10 h-10 text-muted-foreground" />
-                </div>
-                <h3 className="text-lg font-medium text-foreground mb-2">No layouts yet</h3>
-                <p className="text-muted-foreground text-sm mb-4">
-                  Generate AI layout variations to get started
-                </p>
-                <Button
-                  onClick={generateLayouts}
-                  className="btn-glow gap-2"
-                  disabled={generating}
-                >
-                  {generating ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Sparkles className="w-4 h-4" />
-                  )}
-                  Generate Layouts
-                </Button>
-              </div>
-            )}
-          </div>
+          {/* Preview */}
+          <AdPreview
+            version={selectedVersion}
+            sizeSpec={ad.size_spec}
+            showBleed={showBleed}
+            showSafe={showSafe}
+            bleedPx={publication?.bleed_px || 0}
+            safePx={publication?.safe_px || 0}
+          />
 
-          {/* Properties panel */}
-          <PropertiesPanel
-            layout={currentLayout}
-            selectedElement={selectedElement}
+          {/* Info panel */}
+          <AdInfoPanel
+            ad={ad}
             publication={publication}
-            onLayoutChange={handleLayoutChange}
+            selectedVersion={selectedVersion}
           />
         </div>
       </div>
