@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/integrations/db/client';
 import { useAuth } from '@/hooks/useAuth';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { AdCard } from '@/components/ads/AdCard';
@@ -13,9 +13,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Ad, Publication, SizePreset } from '@/types/ad';
+import { Ad, Publication } from '@/types/ad';
 import { Plus, Search, Loader2, LayoutGrid, List, Filter } from 'lucide-react';
 import { toast } from 'sonner';
+import { AiProviderSwitch } from '@/components/ai/AiProviderSwitch';
 
 export default function AdsGallery() {
   const { user, loading: authLoading } = useAuth();
@@ -43,25 +44,8 @@ export default function AdsGallery() {
 
   const fetchAds = async () => {
     try {
-      const { data, error } = await supabase
-        .from('ads')
-        .select('*, publications(*)')
-        .order('updated_at', { ascending: false });
-
-      if (error) throw error;
-      
-      // Transform the data to match our types
-      const typedAds: Ad[] = (data || []).map(ad => ({
-        ...ad,
-        size_spec: ad.size_spec as { width: number; height: number },
-        status: ad.status as 'draft' | 'in_review' | 'approved' | 'exported',
-        publications: ad.publications ? {
-          ...ad.publications,
-          size_presets: (ad.publications.size_presets as unknown) as SizePreset[] || [],
-        } as Publication : undefined,
-      }));
-      
-      setAds(typedAds);
+      const data = await db.fetchAds();
+      setAds(data);
     } catch (error) {
       console.error('Error fetching ads:', error);
       toast.error('Failed to load ads');
@@ -72,19 +56,8 @@ export default function AdsGallery() {
 
   const fetchPublications = async () => {
     try {
-      const { data, error } = await supabase
-        .from('publications')
-        .select('*')
-        .order('name');
-
-      if (error) throw error;
-      
-      const typedPubs: Publication[] = (data || []).map(pub => ({
-        ...pub,
-        size_presets: (pub.size_presets as unknown) as SizePreset[] || [],
-      }));
-      
-      setPublications(typedPubs);
+      const pubs = await db.fetchPublications();
+      setPublications(pubs);
     } catch (error) {
       console.error('Error fetching publications:', error);
     }
@@ -93,6 +66,7 @@ export default function AdsGallery() {
   const filteredAds = ads.filter((ad) => {
     const matchesSearch =
       ad.client_name.toLowerCase().includes(search.toLowerCase()) ||
+      ad.ad_name?.toLowerCase().includes(search.toLowerCase()) ||
       ad.brief?.toLowerCase().includes(search.toLowerCase());
     const matchesStatus = statusFilter === 'all' || ad.status === statusFilter;
     const matchesPublication =
@@ -121,10 +95,13 @@ export default function AdsGallery() {
               {ads.length} total ads • {filteredAds.length} showing
             </p>
           </div>
-          <Button onClick={() => navigate('/ads/new')} className="btn-glow gap-2">
-            <Plus className="w-4 h-4" />
-            New Ad
-          </Button>
+          <div className="flex items-center gap-2">
+            <AiProviderSwitch />
+            <Button onClick={() => navigate('/ads/new')} className="btn-glow gap-2">
+              <Plus className="w-4 h-4" />
+              New Ad
+            </Button>
+          </div>
         </div>
 
         {/* Filters */}
@@ -132,7 +109,7 @@ export default function AdsGallery() {
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
-              placeholder="Search by client or brief..."
+              placeholder="Search by ad name, client or brief..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-9"
@@ -221,7 +198,7 @@ export default function AdsGallery() {
                 className="animate-fade-in"
                 style={{ animationDelay: `${index * 50}ms` }}
               >
-                <AdCard ad={ad} />
+                <AdCard ad={ad} viewMode={viewMode} />
               </div>
             ))}
           </div>

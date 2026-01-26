@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { db } from '@/integrations/db/client';
 import { useAuth } from '@/hooks/useAuth';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,7 +14,35 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Publication, SizePreset } from '@/types/ad';
+import { Publication, SizePreset, Client, PublicationIssue, AdSize, AspectRatio } from '@/types/ad';
+
+// Helper function to calculate aspect ratio from dimensions
+function calculateAspectRatio(width: number, height: number): AspectRatio {
+  const ratio = width / height;
+  
+  // Define aspect ratios with their numeric values
+  const ratios: { value: number; label: AspectRatio }[] = [
+    { value: 1, label: '1:1' },
+    { value: 3/4, label: '3:4' },
+    { value: 4/3, label: '4:3' },
+    { value: 9/16, label: '9:16' },
+    { value: 16/9, label: '16:9' },
+  ];
+  
+  // Find the closest matching ratio
+  let closest = ratios[0];
+  let minDiff = Math.abs(ratio - ratios[0].value);
+  
+  for (const r of ratios) {
+    const diff = Math.abs(ratio - r.value);
+    if (diff < minDiff) {
+      minDiff = diff;
+      closest = r;
+    }
+  }
+  
+  return closest.label;
+}
 import { toast } from 'sonner';
 import { Loader2, Upload, X, Image as ImageIcon, Building2, FileText, Ruler, ArrowRight } from 'lucide-react';
 
@@ -32,14 +59,21 @@ export default function NewAd() {
   const [publications, setPublications] = useState<Publication[]>([]);
 
   // Form state
-  const [clientName, setClientName] = useState('');
+  const [clients, setClients] = useState<Client[]>([]);
+  const [selectedClientId, setSelectedClientId] = useState<string>('');
   const [publicationId, setPublicationId] = useState<string>('');
+  const [issues, setIssues] = useState<PublicationIssue[]>([]);
+  const [selectedIssueId, setSelectedIssueId] = useState<string>('');
+  const [adSizes, setAdSizes] = useState<AdSize[]>([]);
+  const [selectedAdSizeId, setSelectedAdSizeId] = useState<string>('');
   const [selectedPreset, setSelectedPreset] = useState<string>('');
   const [customWidth, setCustomWidth] = useState(600);
   const [customHeight, setCustomHeight] = useState(600);
+  const [selectedRatio, setSelectedRatio] = useState<string>('1:1');
   const [brief, setBrief] = useState('');
   const [copy, setCopy] = useState('');
   const [assets, setAssets] = useState<UploadedAsset[]>([]);
+  const [searchParams] = useSearchParams();
 
   const selectedPublication = publications.find((p) => p.id === publicationId);
   const presets = selectedPublication?.size_presets || [];
@@ -51,28 +85,106 @@ export default function NewAd() {
   }, [user, authLoading, navigate]);
 
   useEffect(() => {
-    fetchPublications();
+    fetchClients();
+    fetchAdSizes();
   }, []);
 
-  const fetchPublications = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('publications')
-        .select('*')
-        .order('name');
+  // Apply query params for initial selection
+  useEffect(() => {
+    const cid = searchParams.get('clientId');
+    if (cid) {
+      setSelectedClientId(cid);
+    }
+  }, [searchParams]);
 
-      if (error) throw error;
-      
-      const typedPubs: Publication[] = (data || []).map(pub => ({
-        ...pub,
-        size_presets: (pub.size_presets as unknown) as SizePreset[] || [],
-      }));
-      
-      setPublications(typedPubs);
+  useEffect(() => {
+    const cid = searchParams.get('clientId');
+    if (cid && !selectedClientId && clients.some((c) => c.id === cid)) {
+      setSelectedClientId(cid);
+    }
+  }, [clients, searchParams, selectedClientId]);
+
+  const fetchClients = async () => {
+    try {
+      const cs = await db.fetchClients();
+      setClients(cs);
     } catch (error) {
-      console.error('Error fetching publications:', error);
+      console.error('Error fetching clients:', error);
     }
   };
+
+  const fetchAdSizes = async () => {
+    try {
+      const sizes = await db.fetchAdSizes();
+      setAdSizes(sizes);
+    } catch (error) {
+      console.error('Error fetching ad sizes:', error);
+    }
+  };
+
+  useEffect(() => {
+    const run = async () => {
+      if (!selectedClientId) {
+        setPublications([]);
+        setPublicationId('');
+        return;
+      }
+      try {
+        const pubs = await db.fetchPublicationsByClient(selectedClientId);
+        setPublications(pubs);
+        const pid = searchParams.get('publicationId');
+        if (pid && pubs.some((p) => p.id === pid)) {
+          setPublicationId(pid);
+        } else {
+          setPublicationId('');
+        }
+      } catch (error) {
+        console.error('Error fetching publications by client:', error);
+      }
+    };
+    run();
+  }, [selectedClientId]);
+
+  // After publications load, apply publicationId param if valid
+  useEffect(() => {
+    const pid = searchParams.get('publicationId');
+    const cid = searchParams.get('clientId');
+    if (pid && cid && cid === selectedClientId && publications.some((p) => p.id === pid)) {
+      setPublicationId(pid);
+    }
+  }, [publications, searchParams, selectedClientId]);
+
+  useEffect(() => {
+    const run = async () => {
+      if (!publicationId) {
+        setIssues([]);
+        setSelectedIssueId('');
+        return;
+      }
+      try {
+        const is = await db.fetchPublicationIssues(publicationId);
+        setIssues(is);
+        const qs = searchParams.get('issueDate');
+        if (qs) {
+          const match = is.find((i) => i.issue_date.startsWith(qs));
+          if (match) {
+            setSelectedIssueId(match.id);
+            return;
+          }
+        }
+        if (is.length > 0) {
+          const today = new Date().toISOString().slice(0, 10);
+          const next = is.find((i) => i.issue_date >= today) || is[is.length - 1];
+          setSelectedIssueId(next.id);
+        } else {
+          setSelectedIssueId('');
+        }
+      } catch (error) {
+        console.error('Error fetching publication issues:', error);
+      }
+    };
+    run();
+  }, [publicationId, searchParams]);
 
   const handlePresetChange = (presetName: string) => {
     setSelectedPreset(presetName);
@@ -82,7 +194,35 @@ export default function NewAd() {
         setCustomWidth(preset.width);
         setCustomHeight(preset.height);
       }
+      setSelectedRatio('');
     }
+  };
+
+  const ratioOptions = [
+    { label: '1:1', w: 1, h: 1 },
+    { label: '3:4', w: 3, h: 4 },
+    { label: '4:3', w: 4, h: 3 },
+    { label: '9:16', w: 9, h: 16 },
+    { label: '16:9', w: 16, h: 9 },
+  ];
+
+  const applyRatio = (label: string) => {
+    const opt = ratioOptions.find((o) => o.label === label);
+    if (!opt) return;
+    const base = 600;
+    let w = base;
+    let h = base;
+    if (opt.w >= opt.h) {
+      h = base;
+      w = Math.round((base * opt.w) / opt.h);
+    } else {
+      w = base;
+      h = Math.round((base * opt.h) / opt.w);
+    }
+    setSelectedPreset('custom');
+    setSelectedRatio(label);
+    setCustomWidth(w);
+    setCustomHeight(h);
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'product' | 'logo') => {
@@ -111,8 +251,8 @@ export default function NewAd() {
     e.preventDefault();
     if (!user) return;
 
-    if (!clientName.trim()) {
-      toast.error('Please enter a client name');
+    if (!selectedClientId) {
+      toast.error('Please select a client');
       return;
     }
 
@@ -120,50 +260,69 @@ export default function NewAd() {
 
     try {
       // Create the ad
-      const { data: adData, error: adError } = await supabase
-        .from('ads')
-        .insert({
-          user_id: user.id,
-          client_name: clientName.trim(),
-          publication_id: publicationId || null,
-          size_spec: { width: customWidth, height: customHeight },
-          dpi: selectedPublication?.dpi_default || 300,
-          brief: brief.trim() || null,
-          copy: copy.trim() || null,
-          status: 'draft',
+      const clientName = (clients.find(c => c.id === selectedClientId)?.name || '').trim();
+      const selectedAdSize = adSizes.find(s => s.id === selectedAdSizeId);
+      const selectedIssue = issues.find(i => i.id === selectedIssueId);
+      
+      // Generate ad_name: ClientName-SizeID-IssueDate-SeqNum
+      let adNameBase = clientName;
+      if (selectedAdSize) {
+        adNameBase += `-${selectedAdSize.size_id}`;
+      }
+      if (selectedIssue) {
+        adNameBase += `-${selectedIssue.issue_date}`;
+      }
+      
+      // Query existing ads with the same base name to get next sequence number
+      const allAds = await db.fetchAds();
+      const existingAdsWithSameName = allAds.filter(ad => 
+        ad.ad_name && ad.ad_name.startsWith(adNameBase)
+      );
+      
+      // Extract sequence numbers from existing ads
+      const sequenceNumbers = existingAdsWithSameName
+        .map(ad => {
+          const match = ad.ad_name?.match(/-(\d+)$/);
+          return match ? parseInt(match[1], 10) : 0;
         })
-        .select()
-        .single();
-
-      if (adError) throw adError;
+        .filter(num => !isNaN(num));
+      
+      // Get next sequence number
+      const nextSeqNum = sequenceNumbers.length > 0 ? Math.max(...sequenceNumbers) + 1 : 1;
+      const adName = `${adNameBase}-${nextSeqNum}`;
+      
+      // Calculate dimensions and aspect ratio
+      const adWidth = selectedAdSize ? selectedAdSize.width_px : customWidth;
+      const adHeight = selectedAdSize ? selectedAdSize.height_px : customHeight;
+      const aspectRatio = calculateAspectRatio(adWidth, adHeight);
+      
+      const ad = await db.createAd({
+        user_id: user.id,
+        client_name: clientName,
+        ad_name: adName,
+        publication_id: publicationId || null,
+        publication_issue: selectedIssueId || null,
+        ad_size_id: selectedAdSizeId || null,
+        aspect_ratio: aspectRatio,
+        size_spec: { width: adWidth, height: adHeight },
+        dpi: selectedAdSize?.dpi || selectedPublication?.dpi_default || 300,
+        brief: brief.trim() || null,
+        copy: copy.trim() || null,
+        status: 'draft',
+      });
 
       // Upload assets
       for (const asset of assets) {
-        const fileName = `${adData.id}/${Date.now()}-${asset.file.name}`;
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('ad-assets')
-          .upload(fileName, asset.file);
-
-        if (uploadError) {
-          console.error('Upload error:', uploadError);
-          continue;
+        try {
+          await db.uploadAsset(ad.id, asset.file, asset.type);
+        } catch (e) {
+          console.error('Upload error:', e);
+          // continue uploading remaining assets
         }
-
-        const { data: urlData } = supabase.storage
-          .from('ad-assets')
-          .getPublicUrl(uploadData.path);
-
-        // Create asset record
-        await supabase.from('assets').insert({
-          ad_id: adData.id,
-          type: asset.type,
-          url: urlData.publicUrl,
-          name: asset.file.name,
-        });
       }
 
       toast.success('Ad created successfully!');
-      navigate(`/ads/${adData.id}`);
+      navigate(`/ads/${ad.id}`);
     } catch (error) {
       console.error('Error creating ad:', error);
       toast.error('Failed to create ad');
@@ -204,13 +363,19 @@ export default function NewAd() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="client">Client Name *</Label>
-                <Input
-                  id="client"
-                  placeholder="e.g., Acme Corp"
-                  value={clientName}
-                  onChange={(e) => setClientName(e.target.value)}
-                />
+                <Label htmlFor="client">Client *</Label>
+                <Select value={selectedClientId} onValueChange={setSelectedClientId}>
+                  <SelectTrigger id="client">
+                    <SelectValue placeholder="Select a client" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {clients.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-2">
@@ -234,6 +399,24 @@ export default function NewAd() {
                   </p>
                 )}
               </div>
+
+              {issues.length > 0 && (
+                <div className="space-y-2 max-w-sm">
+                  <Label htmlFor="issue">Issue</Label>
+                  <Select value={selectedIssueId} onValueChange={setSelectedIssueId}>
+                    <SelectTrigger id="issue">
+                      <SelectValue placeholder="Select issue" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {issues.map((i) => (
+                        <SelectItem key={i.id} value={i.id}>
+                          {new Date(i.issue_date).toLocaleDateString()}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -244,9 +427,51 @@ export default function NewAd() {
                 <Ruler className="w-4 h-4 text-primary" />
                 Ad Size
               </CardTitle>
-              <CardDescription>Select a preset or enter custom dimensions</CardDescription>
+              <CardDescription>Select a standard ad size</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="adSize">Ad Size *</Label>
+                <Select value={selectedAdSizeId} onValueChange={setSelectedAdSizeId}>
+                  <SelectTrigger id="adSize">
+                    <SelectValue placeholder="Select an ad size" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {adSizes.map((size) => (
+                      <SelectItem key={size.id} value={size.id}>
+                        {size.ad_size_fraction} - {size.ad_size_words} ({size.width_px}×{size.height_px}px / {size.width_in}×{size.height_in}in)
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Ad Size Preview */}
+              {selectedAdSizeId && (() => {
+                const selectedSize = adSizes.find(s => s.id === selectedAdSizeId);
+                if (!selectedSize) return null;
+                const maxPreviewSize = 150;
+                const aspectRatio = selectedSize.width_px / selectedSize.height_px;
+                const previewWidth = aspectRatio >= 1 
+                  ? maxPreviewSize 
+                  : maxPreviewSize * aspectRatio;
+                const previewHeight = aspectRatio >= 1 
+                  ? maxPreviewSize / aspectRatio 
+                  : maxPreviewSize;
+                return (
+                  <div className="flex items-center justify-center p-4 bg-muted/30 rounded-lg">
+                    <div
+                      className="bg-primary/20 border-2 border-primary/50 rounded flex flex-col items-center justify-center text-xs text-muted-foreground"
+                      style={{ width: `${previewWidth}px`, height: `${previewHeight}px` }}
+                    >
+                      <span className="font-medium text-foreground">{selectedSize.ad_size_fraction}</span>
+                      <span>{selectedSize.width_px}×{selectedSize.height_px}px</span>
+                      <span>{selectedSize.width_in}×{selectedSize.height_in}in</span>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {presets.length > 0 && (
                 <div className="space-y-2">
                   <Label>Size Preset</Label>
@@ -266,29 +491,18 @@ export default function NewAd() {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="width">Width (px)</Label>
-                  <Input
-                    id="width"
-                    type="number"
-                    min={100}
-                    max={10000}
-                    value={customWidth}
-                    onChange={(e) => setCustomWidth(parseInt(e.target.value) || 600)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="height">Height (px)</Label>
-                  <Input
-                    id="height"
-                    type="number"
-                    min={100}
-                    max={10000}
-                    value={customHeight}
-                    onChange={(e) => setCustomHeight(parseInt(e.target.value) || 600)}
-                  />
-                </div>
+              <div className="flex flex-wrap gap-2">
+                {ratioOptions.map((r) => (
+                  <Button
+                    key={r.label}
+                    type="button"
+                    variant={selectedRatio === r.label ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => applyRatio(r.label)}
+                  >
+                    {r.label}
+                  </Button>
+                ))}
               </div>
 
               {/* Preview */}

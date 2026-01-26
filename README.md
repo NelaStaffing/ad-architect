@@ -1,73 +1,88 @@
-# Welcome to your Lovable project
+# Ad Architect
 
-## Project info
+AI-assisted ad layout generator with Supabase backend and switchable AI provider (Gemini/OpenAI).
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## Deploy to Render
 
-## How can I edit this code?
+This repo is a Vite static site. Deploy it on Render as a **Static Site**.
 
-There are several ways of editing your application.
+- **Build command**
+  - `npm ci && npm run build`
+- **Publish directory**
+  - `dist`
+- **SPA routing**
+  - Configure a rewrite of `/*` to `/index.html` (included in `render.yaml`).
 
-**Use Lovable**
+### Environment variables (Render)
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+Set these in your Render service settings (they are build-time variables for Vite):
 
-Changes made via Lovable will be committed automatically to this repo.
+```env
+VITE_SUPABASE_URL=your_supabase_url
+VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_anon_key
+VITE_AI_PROVIDER=gemini
+```
 
-**Use your preferred IDE**
+### Blueprint option
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+This repo includes `render.yaml`. On Render you can deploy via **Blueprint** to auto-create the service.
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+## Tech stack
 
-Follow these steps:
+- Vite + React + TypeScript
+- shadcn/ui + Tailwind CSS
+- Supabase (auth, database, storage, edge functions)
+- React Query, React Router
+
+## Getting started
+
+1) Install Node.js (LTS) and pnpm or npm
+
+2) Install deps
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
 npm i
+```
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+3) Environment variables (create `.env` in project root)
+
+```env
+VITE_SUPABASE_URL=your_supabase_url
+VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_anon_key
+VITE_AI_PROVIDER=gemini # or openai
+```
+
+Edge function (Supabase): set these as project secrets
+
+```sh
+SUPABASE_URL=...                 # provided by Supabase
+SUPABASE_SERVICE_ROLE_KEY=...    # service role key
+LOVABLE_API_KEY=...              # if using Lovable AI gateway (optional)
+```
+
+4) Start dev server
+
+```sh
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+## Supabase schema
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+Supabase is the primary database. If you plan to change the schema (tables/columns/relations), update:
 
-**Use GitHub Codespaces**
+- `src/integrations/supabase/types.ts` (generate fresh types from your project)
+- `src/integrations/db/providers/supabaseAdapter.ts` (query mapping)
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+All pages use the adapter, so schema changes are localized to the adapter layer and types.
 
-## What technologies are used for this project?
+## AI provider switching
 
-This project is built with:
+Runtime switch between Gemini and OpenAI from the UI. The Supabase edge function currently uses a gateway; we can switch to native provider APIs upon request.
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## Scripts
 
-## How can I deploy this project?
+- `npm run dev` – start dev server
+- `npm run build` – production build
+- `npm run preview` – preview production build
+- `npm run lint` – lint
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)

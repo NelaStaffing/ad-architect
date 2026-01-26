@@ -1,4 +1,4 @@
-export type Json =
+﻿export type Json =
   | string
   | number
   | boolean
@@ -14,52 +14,126 @@ export type Database = {
   }
   public: {
     Tables: {
+      ad_sizes: {
+        Row: {
+          ad_size_fraction: string
+          ad_size_words: string
+          created_at: string
+          dpi: number
+          height_in: number
+          height_px: number
+          id: string
+          size_id: string
+          width_in: number
+          width_px: number
+        }
+        Insert: {
+          ad_size_fraction: string
+          ad_size_words: string
+          created_at?: string
+          dpi?: number
+          height_in: number
+          height_px: number
+          id?: string
+          size_id: string
+          width_in: number
+          width_px: number
+        }
+        Update: {
+          ad_size_fraction?: string
+          ad_size_words?: string
+          created_at?: string
+          dpi?: number
+          height_in?: number
+          height_px?: number
+          id?: string
+          size_id?: string
+          width_in?: number
+          width_px?: number
+        }
+        Relationships: []
+      }
       ads: {
         Row: {
+          ad_name: string | null
+          ad_size_id: string | null
+          aspect_ratio: string | null
+          bleed_px: number | null
           brief: string | null
           client_name: string
           copy: string | null
           created_at: string
           dpi: number
           id: string
+          min_font_size: number | null
           publication_id: string | null
+          publication_issue: string | null
+          safe_px: number | null
           size_spec: Json
-          status: string
+          status: Database["public"]["Enums"]["ad_status"]
           updated_at: string
           user_id: string
         }
         Insert: {
+          ad_name?: string | null
+          ad_size_id?: string | null
+          aspect_ratio?: string | null
+          bleed_px?: number | null
           brief?: string | null
           client_name: string
           copy?: string | null
           created_at?: string
           dpi?: number
           id?: string
+          min_font_size?: number | null
           publication_id?: string | null
-          size_spec?: Json
-          status?: string
+          publication_issue?: string | null
+          safe_px?: number | null
+          size_spec: Json
+          status?: Database["public"]["Enums"]["ad_status"]
           updated_at?: string
           user_id: string
         }
         Update: {
+          ad_name?: string | null
+          ad_size_id?: string | null
+          aspect_ratio?: string | null
+          bleed_px?: number | null
           brief?: string | null
           client_name?: string
           copy?: string | null
           created_at?: string
           dpi?: number
           id?: string
+          min_font_size?: number | null
           publication_id?: string | null
+          publication_issue?: string | null
+          safe_px?: number | null
           size_spec?: Json
-          status?: string
+          status?: Database["public"]["Enums"]["ad_status"]
           updated_at?: string
           user_id?: string
         }
         Relationships: [
           {
+            foreignKeyName: "ads_ad_size_id_fkey"
+            columns: ["ad_size_id"]
+            isOneToOne: false
+            referencedRelation: "ad_sizes"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "ads_publication_id_fkey"
             columns: ["publication_id"]
             isOneToOne: false
             referencedRelation: "publications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ads_publication_issue_fkey"
+            columns: ["publication_issue"]
+            isOneToOne: false
+            referencedRelation: "publication_issues"
             referencedColumns: ["id"]
           },
         ]
@@ -71,7 +145,7 @@ export type Database = {
           height: number | null
           id: string
           name: string | null
-          type: string
+          type: Database["public"]["Enums"]["asset_type"]
           url: string
           width: number | null
         }
@@ -81,7 +155,7 @@ export type Database = {
           height?: number | null
           id?: string
           name?: string | null
-          type: string
+          type: Database["public"]["Enums"]["asset_type"]
           url: string
           width?: number | null
         }
@@ -91,7 +165,7 @@ export type Database = {
           height?: number | null
           id?: string
           name?: string | null
-          type?: string
+          type?: Database["public"]["Enums"]["asset_type"]
           url?: string
           width?: number | null
         }
@@ -104,6 +178,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      clients: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       comments: {
         Row: {
@@ -137,69 +232,125 @@ export type Database = {
           },
         ]
       }
+      publication_issues: {
+        Row: {
+          client_id: string
+          created_at: string | null
+          id: string
+          issue_date: string
+          publication_id: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string | null
+          id?: string
+          issue_date: string
+          publication_id: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string | null
+          id?: string
+          issue_date?: string
+          publication_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "publication_issues_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "publication_issues_publication_id_fkey"
+            columns: ["publication_id"]
+            isOneToOne: false
+            referencedRelation: "publications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       publications: {
         Row: {
           bleed_px: number
+          client_id: string | null
           created_at: string
           dpi_default: number
           id: string
           min_font_size: number
           name: string
           safe_px: number
-          size_presets: Json | null
+          size_presets: Json
           updated_at: string
         }
         Insert: {
           bleed_px?: number
+          client_id?: string | null
           created_at?: string
           dpi_default?: number
           id?: string
           min_font_size?: number
           name: string
           safe_px?: number
-          size_presets?: Json | null
+          size_presets?: Json
           updated_at?: string
         }
         Update: {
           bleed_px?: number
+          client_id?: string | null
           created_at?: string
           dpi_default?: number
           id?: string
           min_font_size?: number
           name?: string
           safe_px?: number
-          size_presets?: Json | null
+          size_presets?: Json
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "publications_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       versions: {
         Row: {
           ad_id: string
           created_at: string
           id: string
-          is_selected: boolean | null
+          image_transform: Json | null
+          is_selected: boolean
           layout_json: Json
           preview_url: string | null
-          source: string
+          source: Database["public"]["Enums"]["version_source"]
+          status: string | null
         }
         Insert: {
           ad_id: string
           created_at?: string
           id?: string
-          is_selected?: boolean | null
+          image_transform?: Json | null
+          is_selected?: boolean
           layout_json: Json
           preview_url?: string | null
-          source: string
+          source: Database["public"]["Enums"]["version_source"]
+          status?: string | null
         }
         Update: {
           ad_id?: string
           created_at?: string
           id?: string
-          is_selected?: boolean | null
+          image_transform?: Json | null
+          is_selected?: boolean
           layout_json?: Json
           preview_url?: string | null
-          source?: string
+          source?: Database["public"]["Enums"]["version_source"]
+          status?: string | null
         }
         Relationships: [
           {
@@ -219,7 +370,9 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      ad_status: "draft" | "in_review" | "approved" | "exported"
+      asset_type: "product" | "logo"
+      version_source: "ai" | "manual"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -346,6 +499,10 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      ad_status: ["draft", "in_review", "approved", "exported"],
+      asset_type: ["product", "logo"],
+      version_source: ["ai", "manual"],
+    },
   },
 } as const

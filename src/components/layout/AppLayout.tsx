@@ -2,7 +2,8 @@ import { ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
-import { Layers, LayoutGrid, Plus, LogOut, User } from 'lucide-react';
+import { Layers, LayoutGrid, Plus, LogOut, User, Users, LayoutDashboard } from 'lucide-react';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,6 +41,16 @@ export function AppLayout({ children }: AppLayoutProps) {
 
           {/* Navigation */}
           <nav className="flex items-center gap-2">
+            <Link to="/dashboard">
+              <Button
+                variant={location.pathname === '/dashboard' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="gap-2"
+              >
+                <LayoutDashboard className="w-4 h-4" />
+                <span className="hidden sm:inline">Dashboard</span>
+              </Button>
+            </Link>
             <Link to="/ads">
               <Button
                 variant={location.pathname === '/ads' ? 'secondary' : 'ghost'}
@@ -48,6 +59,16 @@ export function AppLayout({ children }: AppLayoutProps) {
               >
                 <LayoutGrid className="w-4 h-4" />
                 <span className="hidden sm:inline">Ads</span>
+              </Button>
+            </Link>
+            <Link to="/clients">
+              <Button
+                variant={location.pathname.startsWith('/clients') ? 'secondary' : 'ghost'}
+                size="sm"
+                className="gap-2"
+              >
+                <Users className="w-4 h-4" />
+                <span className="hidden sm:inline">Clients</span>
               </Button>
             </Link>
             <Link to="/ads/new">
@@ -62,8 +83,10 @@ export function AppLayout({ children }: AppLayoutProps) {
             </Link>
           </nav>
 
-          {/* User menu */}
-          <DropdownMenu>
+          {/* Notifications & User menu */}
+          <div className="flex items-center gap-2">
+            <NotificationBell />
+            <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="sm" className="gap-2">
                 <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center">
@@ -85,6 +108,7 @@ export function AppLayout({ children }: AppLayoutProps) {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          </div>
         </div>
       </header>
 
