@@ -1,6 +1,6 @@
 # Ad Architect
 
-AI-assisted ad layout generator with Supabase backend and switchable AI provider (Gemini/OpenAI).
+AI-assisted ad layout generator with Supabase backend and Gemini AI.
 
 ## Deploy to Render
 
@@ -49,7 +49,7 @@ npm i
 ```env
 VITE_SUPABASE_URL=your_supabase_url
 VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_anon_key
-VITE_AI_PROVIDER=gemini # or openai
+# VITE_AI_PROVIDER is no longer needed (Gemini is the only provider)
 ```
 
 Edge function (Supabase): set these as project secrets
@@ -75,9 +75,9 @@ Supabase is the primary database. If you plan to change the schema (tables/colum
 
 All pages use the adapter, so schema changes are localized to the adapter layer and types.
 
-## AI provider switching
+## AI Provider
 
-Runtime switch between Gemini and OpenAI from the UI. The Supabase edge function currently uses a gateway; we can switch to native provider APIs upon request.
+Gemini is the AI provider, integrated via n8n webhooks. The Supabase edge function routes requests to configured webhook URLs.
 
 ## Scripts
 

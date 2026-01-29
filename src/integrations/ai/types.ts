@@ -1,4 +1,4 @@
-export type AiProviderType = 'gemini' | 'openai';
+export type AiProviderType = 'gemini';
 
 export interface AiContextValue {
   provider: AiProviderType;

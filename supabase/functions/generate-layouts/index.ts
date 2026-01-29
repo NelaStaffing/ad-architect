@@ -27,7 +27,7 @@ interface GenerateRequest {
   copy: string;
   brief: string;
   assets: AssetMeta[];
-  provider?: 'gemini' | 'openai';
+  provider?: 'gemini';
   numOptions?: number;
   regenerationPrompt?: string;
   bigChangesPrompt?: string;
@@ -238,104 +238,12 @@ No mockups. No frames. No watermarks.
 
     console.log("Generating ad image for:", { adId, sizeSpec, brief: brief?.substring(0, 50) });
 
-    // Note: OpenAI Images generation endpoint does not currently accept reference images.
-    // We embed public asset URLs in the textual prompt for guidance, and will use direct
-    // reference inputs for providers that support it (e.g., Gemini/Vertex in a future branch).
-
-    // Provider-specific image generation (direct APIs)
+    // Gemini image generation via n8n webhook
     let aiDescription = "";
     const uploadedUrls: string[] = [];
     const count = Math.min(Math.max(numOptions ?? 1, 1), 4);
-    let chosenTargetSize: string | null = null;
-    let genWidth: number | null = null;
-    let genHeight: number | null = null;
-    let modelId = "";
-    
-    if (!provider || provider === 'openai') {
-      const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
-      if (!OPENAI_API_KEY) {
-        return new Response(
-          JSON.stringify({ error: 'OPENAI_API_KEY is not configured' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      // Map requested size to OpenAI-supported sizes based on aspect ratio
-      // Supported sizes: '1024x1024', '1024x1536', '1536x1024', and 'auto'
-      const aspect = sizeSpec.width / sizeSpec.height;
-      let targetSize = '1024x1024';
-      if (aspect > 1.2) {
-        targetSize = '1536x1024'; // landscape
-      } else if (aspect < 0.8) {
-        targetSize = '1024x1536'; // portrait
-      }
-      chosenTargetSize = targetSize;
-      modelId = 'chatgpt-image-latest';
-      const openaiRes = await fetch('https://api.openai.com/v1/images/generations', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${OPENAI_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'chatgpt-image-latest',
-          prompt: imagePrompt,
-          size: targetSize,
-          n: count
-        })
-      });
-      if (!openaiRes.ok) {
-        const t = await openaiRes.text();
-        console.error('OpenAI error:', openaiRes.status, t);
-        return new Response(
-          JSON.stringify({ error: 'OpenAI image generation failed' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      const oj = await openaiRes.json();
-      const items = Array.isArray(oj?.data) ? oj.data : [];
-      for (let i = 0; i < items.length; i++) {
-        const it = items[i];
-        let bytes: Uint8Array | null = null;
-        if (it?.b64_json) {
-          bytes = Uint8Array.from(atob(it.b64_json), c => c.charCodeAt(0));
-        } else if (it?.url) {
-          const imgRes = await fetch(it.url);
-          if (!imgRes.ok) {
-            const tt = await imgRes.text();
-            console.error('OpenAI image download failed:', imgRes.status, tt);
-            return new Response(
-              JSON.stringify({ error: 'OpenAI image download failed' }),
-              { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            );
-          }
-          const ab = await imgRes.arrayBuffer();
-          bytes = new Uint8Array(ab);
-        }
 
-        if (!bytes) continue;
-
-        const fileName = `generated/${adId}/${Date.now()}-${i}.png`;
-        const { error: uploadError } = await supabase.storage
-          .from('ad-assets')
-          .upload(fileName, bytes, {
-            contentType: 'image/png',
-            upsert: true
-          });
-        if (uploadError) {
-          console.error('Storage upload error:', uploadError);
-          return new Response(
-            JSON.stringify({ error: 'Failed to save generated image' }),
-            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-
-        const { data: urlData } = supabase.storage
-          .from('ad-assets')
-          .getPublicUrl(fileName);
-        uploadedUrls.push(urlData.publicUrl);
-      }
-      aiDescription = 'Generated with OpenAI gpt-image-1';
-    } else if (provider === 'gemini') {
+    {
       // Route Gemini generation to external webhook (n8n) which returns generated images
       const WEBHOOK_URL = Deno.env.get('N8N_GEMINI_WEBHOOK_URL');
       if (!WEBHOOK_URL) {
@@ -563,11 +471,8 @@ No mockups. No frames. No watermarks.
               templateName: "AI Generated Ad",
               rationale: aiDescription,
               warnings: [],
-              provider: provider || 'openai',
+              provider: 'gemini',
               prompt: imagePrompt,
-              targetSize: chosenTargetSize,
-              model: modelId || (provider === 'openai' ? 'gpt-image-1' : ''),
-              outputSize: chosenTargetSize ?? (genWidth && genHeight ? `${genWidth}x${genHeight}` : undefined),
               assetsUsed: {
                 products: productAssets.map(a => a.url),
                 logos: logoAssets.map(a => a.url)

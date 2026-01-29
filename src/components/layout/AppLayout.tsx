@@ -2,7 +2,7 @@ import { ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
-import { Layers, LayoutGrid, Plus, LogOut, User, Users, LayoutDashboard } from 'lucide-react';
+import { Layers, LayoutGrid, Plus, LogOut, User, Users, LayoutDashboard, Shield } from 'lucide-react';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import {
   DropdownMenu,
@@ -17,7 +17,7 @@ interface AppLayoutProps {
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
-  const { user, signOut } = useAuth();
+  const { user, signOut, isManager, role } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -51,6 +51,18 @@ export function AppLayout({ children }: AppLayoutProps) {
                 <span className="hidden sm:inline">Dashboard</span>
               </Button>
             </Link>
+            {isManager && (
+              <Link to="/manager">
+                <Button
+                  variant={location.pathname === '/manager' ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="gap-2"
+                >
+                  <Shield className="w-4 h-4" />
+                  <span className="hidden sm:inline">Team</span>
+                </Button>
+              </Link>
+            )}
             <Link to="/ads">
               <Button
                 variant={location.pathname === '/ads' ? 'secondary' : 'ghost'}
@@ -101,6 +113,12 @@ export function AppLayout({ children }: AppLayoutProps) {
               <DropdownMenuItem disabled className="text-xs text-muted-foreground">
                 {user?.email}
               </DropdownMenuItem>
+              {role !== 'user' && (
+                <DropdownMenuItem disabled className="text-xs">
+                  <Shield className="w-3 h-3 mr-2" />
+                  {role.charAt(0).toUpperCase() + role.slice(1)}
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleSignOut} className="text-destructive">
                 <LogOut className="w-4 h-4 mr-2" />

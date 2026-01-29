@@ -33,7 +33,7 @@ export interface GenerateLayoutsPayload {
     width: number | null;
     height: number | null;
   }>;
-  provider?: 'gemini' | 'openai';
+  provider?: 'gemini';
 }
 
 export interface UpdateAdSpecsInput {

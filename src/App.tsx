@@ -10,6 +10,7 @@ import { AiProvider } from "@/integrations/ai/context";
 const Landing = lazy(() => import("./pages/Landing"));
 const Auth = lazy(() => import("./pages/Auth"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
+const ManagerDashboard = lazy(() => import("./pages/ManagerDashboard"));
 const AdsGallery = lazy(() => import("./pages/AdsGallery"));
 const NewAd = lazy(() => import("./pages/NewAd"));
 const AdEditor = lazy(() => import("./pages/AdEditor"));
@@ -41,6 +42,7 @@ const App = () => (
                 <Route path="/" element={<Landing />} />
                 <Route path="/auth" element={<Auth />} />
                 <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/manager" element={<ManagerDashboard />} />
                 <Route path="/ads" element={<AdsGallery />} />
                 <Route path="/ads/new" element={<NewAd />} />
                 <Route path="/ads/:id" element={<AdEditor />} />
